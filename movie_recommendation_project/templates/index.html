@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Movie Recommendation System</title>
+<link rel="stylesheet" href="/static/style.css">
+
+</head>
+
+<body>
+
+<header>
+
+<h1>🎬 Movie Recommender</h1>
+
+<form method="POST">
+
+<input
+type="text"
+name="movie"
+placeholder="Search a movie..."
+required>
+
+<button>Recommend</button>
+
+</form>
+
+</header>
+
+<h2>All Movies</h2>
+
+<div class="grid">
+
+{% for m in movies %}
+
+<div class="movie-card">
+{{m}}
+</div>
+
+{% endfor %}
+
+</div>
+
+{% if recs %}
+
+<h2>Top Recommendations</h2>
+
+<div class="poster-grid">
+
+{% for r in recs %}
+
+<div class="poster">
+
+<img src="{{r.poster}}">
+
+<p>{{r.title}}</p>
+
+</div>
+
+{% endfor %}
+
+</div>
+
+{% endif %}
+
+<h2>Training Accuracy</h2>
+
+<img src="/static/chart.png" class="chart">
+
+</body>
+
+</html>
