@@ -1,60 +1,103 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-
 <title>Movie Recommendation System</title>
-<link rel="stylesheet" href="/static/style.css">
+
+<style>
+
+body{
+background:#141414;
+color:white;
+font-family:Arial;
+margin:0;
+padding:20px;
+}
+
+h1{
+text-align:center;
+}
+
+form{
+text-align:center;
+margin-bottom:30px;
+}
+
+input{
+padding:10px;
+width:400px;
+border:none;
+border-radius:5px;
+}
+
+button{
+padding:10px 20px;
+background:#e50914;
+color:white;
+border:none;
+border-radius:5px;
+cursor:pointer;
+}
+
+.results{
+display:grid;
+grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+gap:20px;
+margin-top:20px;
+}
+
+.movie{
+position:relative;
+transition:0.3s;
+}
+
+.movie img{
+width:100%;
+border-radius:8px;
+}
+
+.movie:hover{
+transform:scale(1.1);
+}
+
+.title{
+text-align:center;
+margin-top:8px;
+font-size:14px;
+}
+
+</style>
 
 </head>
 
 <body>
 
-<header>
-
-<h1>🎬 Movie Recommender</h1>
+<h1>🎬 Movie Recommendation System</h1>
 
 <form method="POST">
 
 <input
 type="text"
-name="movie"
-placeholder="Search a movie..."
+name="watched"
+placeholder="Enter movies you watched (Example: Avatar, Titanic)"
 required>
 
-<button>Recommend</button>
+<button type="submit">Recommend</button>
 
 </form>
 
-</header>
-
-<h2>All Movies</h2>
-
-<div class="grid">
-
-{% for m in movies %}
-
-<div class="movie-card">
-{{m}}
-</div>
-
-{% endfor %}
-
-</div>
-
 {% if recs %}
 
-<h2>Top Recommendations</h2>
+<h2>Recommended Movies</h2>
 
-<div class="poster-grid">
+<div class="results">
 
 {% for r in recs %}
 
-<div class="poster">
+<div class="movie">
 
 <img src="{{r.poster}}">
 
-<p>{{r.title}}</p>
+<div class="title">{{r.title}}</div>
 
 </div>
 
@@ -64,10 +107,5 @@ required>
 
 {% endif %}
 
-<h2>Training Accuracy</h2>
-
-<img src="/static/chart.png" class="chart">
-
 </body>
-
 </html>
