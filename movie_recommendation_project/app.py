@@ -3,16 +3,17 @@ import pandas as pd
 import numpy as np
 import tensorflow as tf
 import requests
-import matplotlib.pyplot as plt
+import os
 
 app = Flask(__name__)
 
-ratings = pd.read_csv("ratings.csv").head(30000)
-movies = pd.read_csv("movies.csv")
+# Load datasets
+ratings = pd.read_csv("ratings.csv").head(15000)
+movies = pd.read_csv("movies.csv").head(2000)
 
 # Encode IDs
 user_ids = ratings.userId.unique().tolist()
-movie_ids = ratings.movieId.unique().tolist()
+movie_ids = movies.movieId.tolist()
 
 user_map = {x:i for i,x in enumerate(user_ids)}
 movie_map = {x:i for i,x in enumerate(movie_ids)}
@@ -20,105 +21,126 @@ movie_map = {x:i for i,x in enumerate(movie_ids)}
 ratings["user"] = ratings["userId"].map(user_map)
 ratings["movie"] = ratings["movieId"].map(movie_map)
 
-num_users = len(user_ids)
-num_movies = len(movie_ids)
+# Load trained model
+model = tf.keras.models.load_model("recommender_model.h5", compile=False)
 
-X = ratings[["user","movie"]].values
-y = ratings["rating"].values
+# Placeholder poster with caching and better fallback
+poster_cache = {}
 
-# Deep learning model
-user_input = tf.keras.layers.Input(shape=(1,))
-movie_input = tf.keras.layers.Input(shape=(1,))
+def _omdb_poster_search(title):
+    api_key = (os.environ.get("OMDB_API_KEY") or "da205fe2").strip()
+    if not api_key or api_key == "da205fe2":
+        print("[WARNING] OMDB_API_KEY missing or default; fallback to placeholder if not found")
 
-user_embed = tf.keras.layers.Embedding(num_users,50)(user_input)
-movie_embed = tf.keras.layers.Embedding(num_movies,50)(movie_input)
+    title_clean = title.split("(")[0].strip()
+    uri_title = requests.utils.requote_uri(title_clean)
+    url = f"http://www.omdbapi.com/?t={uri_title}&apikey={api_key}"
 
-u = tf.keras.layers.Flatten()(user_embed)
-m = tf.keras.layers.Flatten()(movie_embed)
+    try:
+        resp = requests.get(url, timeout=5)
+        resp.raise_for_status()
+        data = resp.json()
 
-x = tf.keras.layers.Concatenate()([u,m])
-x = tf.keras.layers.Dense(128,activation="relu")(x)
-x = tf.keras.layers.Dense(64,activation="relu")(x)
+        if data.get("Response") == "True" and data.get("Poster") and data["Poster"] != "N/A":
+            return data["Poster"]
 
-output = tf.keras.layers.Dense(1)(x)
+        # Try with search endpoint (more tolerant of exact match issues)
+        search_url = f"http://www.omdbapi.com/?s={uri_title}&apikey={api_key}"
+        resp2 = requests.get(search_url, timeout=5)
+        resp2.raise_for_status()
+        data2 = resp2.json()
 
-model = tf.keras.Model([user_input,movie_input],output)
+        if data2.get("Response") == "True" and "Search" in data2 and data2["Search"]:
+            best = data2["Search"][0]
+            if best.get("Poster") and best["Poster"] != "N/A":
+                return best["Poster"]
 
-model.compile(loss="mse",optimizer="adam",metrics=["mae"])
+    except requests.RequestException as e:
+        print(f"[WARNING] OMDB request error for '{title}': {e}")
+    except ValueError as e:
+        print(f"[WARNING] invalid JSON from OMDB for '{title}': {e}")
 
-history = model.fit(
-    [X[:,0],X[:,1]],
-    y,
-    epochs=2,
-    batch_size=64
-)
-model.save("recommender_model.h5")
-# Save training accuracy graph
-plt.plot(history.history["mae"])
-plt.title("Training Accuracy")
-plt.xlabel("Epoch")
-plt.ylabel("MAE")
-plt.savefig("static/chart.png")
+    return "https://via.placeholder.com/200x300?text=No+Poster"
 
 
-# Get poster from OMDb
 def get_poster(title):
+    if not title:
+        return "https://via.placeholder.com/200x300?text=No+Poster"
 
-    url = f"http://www.omdbapi.com/?t={title}&apikey=demo"
-    data = requests.get(url).json()
+    if title in poster_cache:
+        return poster_cache[title]
 
-    if data.get("Poster") and data["Poster"] != "N/A":
-        return data["Poster"]
-
-    return ""
-
+    poster_url = _omdb_poster_search(title)
+    poster_cache[title] = poster_url
+    return poster_url
 
 # Recommendation function
-def recommend(movie_title):
+def recommend(movie_name):
+    
+    movie_name = movie_name.lower()
 
-    movie = movies[movies.title.str.contains(movie_title,case=False)]
+    match = movies[movies["title"].str.lower().str.contains(movie_name, na=False)]
 
-    if movie.empty:
+    if match.empty:
+        # if movie not found, return random suggestions
+        sample = movies.sample(10)
+        return [{"title": row.title, "poster": get_poster(row.title)} for _, row in sample.iterrows()]
+
+    movie_id = match.iloc[0]["movieId"]
+
+    if movie_id not in movie_map:
         return []
 
-    preds=[]
+    movie_index = movie_map[movie_id]
 
-    for m in range(num_movies):
+    # get movie embedding layer
+    movie_embeddings = model.layers[3].get_weights()[0]
 
-        p = model.predict([np.array([0]),np.array([m])],verbose=0)
-        preds.append((m,p[0][0]))
+    # embedding of selected movie
+    target = movie_embeddings[movie_index]
 
-    preds = sorted(preds,key=lambda x:x[1],reverse=True)[:10]
+    # compute similarity
+    similarity = movie_embeddings @ target
 
-    results=[]
+    # top similar movies
+    similar_indices = np.argsort(similarity)[::-1][1:11]
 
-    for i,_ in preds:
+    results = []
 
-        title = movies[movies.movieId==movie_ids[i]].title.values[0]
-        poster = get_poster(title)
+    for idx in similar_indices:
+    
+        if idx >= len(movie_ids):
+            continue
+
+        mid = movie_ids[idx]
+
+        movie_row = movies[movies.movieId == mid]
+
+        if movie_row.empty:
+            continue
+
+        title = movie_row.title.values[0]
 
         results.append({
-            "title":title,
-            "poster":poster
+            "title": title,
+            "poster": get_poster(title)
         })
 
     return results
 
 
-@app.route("/",methods=["GET","POST"])
+@app.route("/", methods=["GET","POST"])
 def home():
 
-    recs=[]
+    recs = []
 
-    if request.method=="POST":
-        movie=request.form["movie"]
-        recs=recommend(movie)
+    if request.method == "POST":
+        watched = request.form["watched"]
+        recs = recommend(watched)
 
-    return render_template(
-        "index.html",
-        movies=list(movies.title.values)[:200],
-        recs=recs
-    )
+    return render_template("index.html", recs=recs)
+
 
 if __name__ == "__main__":
+    print("Starting Flask server...")
     app.run(debug=True)
