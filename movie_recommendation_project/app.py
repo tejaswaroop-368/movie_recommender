@@ -9,8 +9,8 @@ import os
 app = Flask(__name__)
 
 # Load datasets
-ratings = pd.read_csv("ratings.csv").head(15000)
-movies = pd.read_csv("movies.csv").head(2000)
+ratings = pd.read_csv("movie_recommendation_project/ratings.csv")
+movies = pd.read_csv("movie_recommendation_project/movies.csv")
 
 # Encode IDs
 user_ids = ratings.userId.unique().tolist()
@@ -23,7 +23,7 @@ ratings["user"] = ratings["userId"].map(user_map)
 ratings["movie"] = ratings["movieId"].map(movie_map)
 
 # Load trained model
-model = tf.keras.models.load_model("recommender_model.h5", compile=False)
+model = tf.keras.models.load_model("movie_recommendation_project/recommender_model.h5", compile=False)
 
 # Placeholder poster with caching and better fallback
 poster_cache = {}
